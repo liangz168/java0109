@@ -1,0 +1,12 @@
+server:
+  name: app
+  port: 8081
+logging:
+  level:
+    root: info
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/langchain_test?charset=utf8mb4
+    username: root
+    password: root
+    driver-class-name: com.mysql.jdbc.Driver

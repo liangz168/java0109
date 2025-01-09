@@ -1,89 +1,99 @@
 package com.airbnb.consumer.crawler;
+import com.airbnb.consumer.web.ConsumerWeb;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import org.springframework.boot.autoconfigure.neo4j.Neo4jProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import java.nio.charset.StandardCharsets;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import java.nio.charset.StandardCharsets;
+
+import java.security.cert.CertificateException;
 
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import java.util.HashMap;
 import java.util.List;
-import org.apache.http.conn.ssl.NoopHostnameVerifier;
+import java.util.Map;
+
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.ssl.SSLContexts;
-import org.apache.http.ssl.TrustStrategy;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.web.client.RestTemplate;
-
-import javax.net.ssl.SSLContext;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
 
 
+
+@Component
 public class AirbnbCrawler {
-    public List<String> handle(String url) throws Exception {
-        String res = doGet("https://www.airbnb.com/s/Europe/homes?tab_id=home_tab&refinement_paths%5B%5D=%2Fhomes&flexible_trip_lengths%5B%5D=one_week&monthly_start_date=2024-12-01&monthly_length=3&monthly_end_date=2025-03-01&price_filter_input_type=0&channel=EXPLORE&place_id=ChIJhdqtz4aI7UYRefD8s-aZ73I&date_picker_type=calendar&source=structured_search_input_header&search_type=filter_change");
-        System.out.println(res);
-        return null;
-    }
-
-    public static void main(String[] args) throws Exception {
-        System.out.println("111");
-        new AirbnbCrawler().handle(null);
-    }
-
-
-    public static String doGet(String httpUrl) throws Exception {
-        RestTemplate restTemplate= getRestTemplate();
-        HttpHeaders httpHeaders = new HttpHeaders();
-        httpHeaders.add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X x.y;rv:42.0) Gecko/20100101 Firefox/42.0");
-        HttpEntity<String> entity = new HttpEntity<String>(null, httpHeaders);
-        System.out.println("111");
-        String result=restTemplate.exchange(httpUrl, HttpMethod.GET,entity,String.class).getBody();
+    private static final Logger log = LoggerFactory.getLogger(AirbnbCrawler.class);
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    public void handle(String url, String headers) throws Exception {
+        String result = doGet(url, headers);
         int start = result.indexOf("mapSearchResults");
         int end =  result.indexOf(",\"staysInViewport");
         String data = result.substring(start, end).replace("mapSearchResults\":", "");
         JSONArray mapSearchResults = JSON.parseArray(data);
         for(int i =0; i < mapSearchResults.size(); i ++){
             JSONObject temp = mapSearchResults.getJSONObject(i);
-            JSONObject item = temp.getJSONObject("listing");
+            JSONObject listing = temp.getJSONObject("listing");
             // Hotel name
-            String title = item.getString("title");
+            String title = listing.getString("title");
             // Star
-            String ratingAverage = item.getString("ratingAverage");
-            //String ratingAverage = item.getString("ratingAverage");
-            System.out.println(title);
-        }
+            String price = temp.getJSONObject("pricingQuote")
+                    .getJSONObject("structuredStayDisplayPrice")
+                    .getJSONObject("primaryLine")
+                    .getString("price");
+            JSONObject listingParamOverrides = temp.getJSONObject("listingParamOverrides");
+            String checkin = listingParamOverrides.getString("checkin");
+            String checkout = listingParamOverrides.getString("checkout");
+            int adults = listingParamOverrides.getIntValue("adults");
+            int children = listingParamOverrides.getIntValue("children");
+            Map<String, String> itemMap = new HashMap<>();
+            itemMap.put("title", title);
+            String ratingAverage = temp.getString("avgRatingLocalized").split(" ")[0];
+            itemMap.put("ratingAverage", ratingAverage);
+            if (price == null){
+                itemMap.put("price", "");
+            }else {
+                itemMap.put("price", price.replace("¥ ", "").replace(",", ""));
+            }
+             itemMap.put("checkin", checkin);
+            itemMap.put("checkout", checkout);
+            String guestNum = adults + children + "";
+            itemMap.put("guestNum", guestNum);
+            log.info("itemMap:{}", JSON.toJSONString(itemMap));
+            jdbcTemplate.update("insert into t_Airbnb_data (title, rating_average, price, tax_price, checkin, checkout, guest_num) values(?, ?, ?, ?, ?, ?, ?)",
+                    title, ratingAverage, price, "", checkin, checkout, guestNum
+            );
 
-        return "";
+        }
+    }
+
+
+
+    private String doGet(String httpUrl, String headers) throws Exception {
+        RestTemplate restTemplate= getRestTemplate();
+        HttpHeaders httpHeaders = new HttpHeaders();
+        JSONObject headersObject = JSON.parseObject(headers);
+        for(String key : headersObject.keySet()){
+            httpHeaders.add(key, headersObject.getString(key));
+        }
+        HttpEntity<String> entity = new HttpEntity<String>(null, httpHeaders);
+        System.out.println("111");
+        return restTemplate.exchange(httpUrl, HttpMethod.GET,entity,String.class).getBody();
     }
 
     /**

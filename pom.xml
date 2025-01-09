@@ -8,7 +8,7 @@
     <groupId>com.airbnb</groupId>
     <artifactId>test</artifactId>
     <version>0.0.1</version>
-    <packaging>pom</packaging>
+    <packaging>jar</packaging>
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -42,9 +42,32 @@
             <artifactId>fastjson</artifactId>
             <version>1.2.83</version>
         </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+        </dependency>
+        <!-- 在<dependencies>标签内添加 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.0</version> <!-- 替换成最新的版本号 -->
+        </dependency>
     </dependencies>
 
     <build>
+        <sourceDirectory>./com</sourceDirectory>
         <pluginManagement>
             <plugins>
                 <plugin>
@@ -67,6 +90,14 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>2.22.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <mainClass>com.airbnb.Main</mainClass>
+                        <skip>false</skip>
+                    </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
